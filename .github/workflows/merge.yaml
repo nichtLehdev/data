@@ -6,7 +6,7 @@ on:
       sort_by_key:
         description: 'Object key to sort by'
         required: true
-        default: 'name'
+        default: 'icao'
         type: string
 
 jobs:

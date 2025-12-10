@@ -1235,5 +1235,18 @@
     "name": "Air Mauritius Virtual",
     "callsign": "Air Mauritius",
     "virtual": true
+  },
+  {
+    "icao": "BEE",
+    "name": "vFlybe",
+    "callsign": "JERSEY",
+    "country": "UNITED KINGDOM",
+    "virtual": true
+  },
+  {
+    "icao": "DAL",
+    "name": "Fly Delta Virtual",
+    "callsign": "Delta",
+    "virtual": true
   }
 ]

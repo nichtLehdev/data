@@ -53,11 +53,11 @@ jobs:
                 
                 if (hasAirlinesJson && onlyAirlinesJson) {
                   relevantPRs.push(pr.number);
-                  console.log(`✓ PR #${pr.number}: Only ${targetFile} modified`);
+                  console.log(`PR #${pr.number}: Only ${targetFile} modified`);
                 } else if (hasAirlinesJson) {
-                  console.log(`✗ PR #${pr.number}: ${targetFile} modified but also other files`);
+                  console.log(`PR #${pr.number}: ${targetFile} modified but also other files`);
                 } else {
-                  console.log(`✗ PR #${pr.number}: Does not modify ${targetFile}`);
+                  console.log(`PR #${pr.number}: Does not modify ${targetFile}`);
                 }
               } catch (e) {
                 console.log(`Error checking PR #${pr.number}: ${e.message}`);
@@ -102,14 +102,14 @@ jobs:
               console.log('No existing file on main or invalid JSON, starting fresh');
             }
             
-            // Create a map to track objects by ICAO+callsign combination
+            // Create a map to track objects by ICAO+callsign+virtual combination
             const airlineMap = new Map();
             const objectOrder = [];
             
             // Add base objects first (preserving order)
             for (const obj of baseData) {
-              if (obj.icao && obj.callsign) {
-                const key = `${obj.icao}|${obj.callsign}`;
+              if (obj.icao && obj.callsign && obj.virtual !== undefined) {
+                const key = `${obj.icao}|${obj.callsign}|${obj.virtual}`;
                 airlineMap.set(key, obj);
                 objectOrder.push(key);
               }
@@ -149,51 +149,51 @@ jobs:
                   
                   // Check each object from the PR
                   for (const obj of prData) {
-                    if (!obj.icao || !obj.callsign) {
-                      console.log(`Skipping object without ICAO or callsign in PR #${prNumber}`);
+                    if (!obj.icao || !obj.callsign || obj.virtual === undefined) {
+                      console.log(`Skipping object without ICAO, callsign, or virtual field in PR #${prNumber}`);
                       continue;
                     }
                     
-                    const key = `${obj.icao}|${obj.callsign}`;
+                    const key = `${obj.icao}|${obj.callsign}|${obj.virtual}`;
                     
-                    // Check for exact match (ICAO + callsign)
+                    // Check for exact match (ICAO + callsign + virtual)
                     if (airlineMap.has(key)) {
                       const existing = airlineMap.get(key);
                       if (JSON.stringify(existing) === JSON.stringify(obj)) {
-                        console.log(`Duplicate airline (${obj.icao}/${obj.callsign}) in PR #${prNumber}, skipping`);
+                        console.log(`Duplicate airline (${obj.icao}/${obj.callsign}/${obj.virtual ? 'virtual' : 'real'}) in PR #${prNumber}, skipping`);
                         continue;
                       }
                       
                       // It's an update - replace the existing object
                       airlineMap.set(key, obj);
-                      console.log(`Updated airline ${obj.icao}/${obj.callsign} from PR #${prNumber}`);
+                      console.log(`Updated airline ${obj.icao}/${obj.callsign}/${obj.virtual ? 'virtual' : 'real'} from PR #${prNumber}`);
                       continue;
                     }
                     
-                    // Check if there's an airline with same ICAO but different callsign
+                    // Check if there's an airline with same ICAO+virtual but different callsign
                     // This could be either:
                     // 1. A new airline with same ICAO (OK to add)
                     // 2. A callsign change (ambiguous - needs manual review)
-                    let hasSameIcao = false;
+                    let hasSameIcaoAndVirtual = false;
                     for (const [existingKey, existingObj] of airlineMap.entries()) {
-                      if (existingObj.icao === obj.icao) {
-                        hasSameIcao = true;
+                      if (existingObj.icao === obj.icao && existingObj.virtual === obj.virtual && existingObj.callsign !== obj.callsign) {
+                        hasSameIcaoAndVirtual = true;
                         break;
                       }
                     }
                     
-                    if (hasSameIcao) {
+                    if (hasSameIcaoAndVirtual) {
                       // Ambiguous case - could be callsign change or new airline
-                      console.log(`Ambiguous change for ${obj.icao} in PR #${prNumber} - needs manual review`);
+                      console.log(`Ambiguous change for ${obj.icao} (${obj.virtual ? 'virtual' : 'real'}) in PR #${prNumber} - needs manual review`);
                       if (!manualPRs.includes(prNumber)) {
                         manualPRs.push(prNumber);
                       }
                       continue;
                     }
                     
-                    // Completely new airline (new ICAO+callsign combination)
+                    // Completely new airline (new ICAO+callsign+virtual combination)
                     newObjects.push(obj);
-                    console.log(`New airline ${obj.icao}/${obj.callsign} from PR #${prNumber}`);
+                    console.log(`New airline ${obj.icao}/${obj.callsign}/${obj.virtual ? 'virtual' : 'real'} from PR #${prNumber}`);
                   }
                   
                   processedPRs.push(prNumber);
@@ -259,7 +259,7 @@ jobs:
             
             **Auto-detected PRs** that only modified `custom-data/airlines.json`
             
-            ${{ steps.merge.outputs.manual_prs != '' && format('**Manual review needed for PRs:** {0}', steps.merge.outputs.manual_prs) || '' }}
+            ${{ steps.merge.outputs.manual_prs != '' && format('Manual review needed for PRs: {0}', steps.merge.outputs.manual_prs) || '' }}
             
             Generated by workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           labels: automated-merge
@@ -322,7 +322,7 @@ jobs:
       
       - name: Summary
         run: |
-          echo "## Merge Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "## Merge Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **PRs processed:** ${{ steps.merge.outputs.processed_prs }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Total objects:** ${{ steps.merge.outputs.object_count }}" >> $GITHUB_STEP_SUMMARY
@@ -331,5 +331,5 @@ jobs:
           fi
           if [ -n "${{ steps.merge.outputs.manual_prs }}" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "⚠️ **Manual review needed for PRs:** ${{ steps.merge.outputs.manual_prs }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Manual review needed for PRs:** ${{ steps.merge.outputs.manual_prs }}" >> $GITHUB_STEP_SUMMARY
           fi

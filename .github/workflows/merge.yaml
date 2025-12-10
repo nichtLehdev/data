@@ -157,9 +157,36 @@ jobs:
                     }
                   }
                   
-                  // Detect deletions: airlines in base but not in this PR
+                  // Detect potential deletions or key changes
+                  // If a PR has fewer airlines than base, check what's missing
+                  const missingInPR = [];
                   for (const key of objectOrder) {
                     if (!prKeys.has(key)) {
+                      missingInPR.push(key);
+                    }
+                  }
+                  
+                  // Check if this is a true deletion or a key change (ICAO/callsign/virtual change)
+                  // A key change would mean: same number of airlines or PR has new keys not in base
+                  const newKeysInPR = [];
+                  for (const key of prKeys) {
+                    if (!objectOrder.includes(key)) {
+                      newKeysInPR.push(key);
+                    }
+                  }
+                  
+                  // If PR has missing keys AND new keys with similar count, it's likely a key change (ambiguous)
+                  // If PR just has fewer airlines with no new keys, it's a deletion
+                  if (missingInPR.length > 0 && newKeysInPR.length > 0) {
+                    // Ambiguous: could be ICAO/callsign/virtual changes
+                    console.log(`Ambiguous changes in PR #${prNumber} - potential key changes detected, needs manual review`);
+                    if (!manualPRs.includes(prNumber)) {
+                      manualPRs.push(prNumber);
+                    }
+                    continue; // Skip this entire PR
+                  } else if (missingInPR.length > 0) {
+                    // True deletions
+                    for (const key of missingInPR) {
                       deletedKeys.add(key);
                       console.log(`Deleted airline ${key.replace(/\|/g, '/')} in PR #${prNumber}`);
                     }

@@ -2,12 +2,6 @@ name: Merge JSON from PRs
 
 on:
   workflow_dispatch:
-    inputs:
-      sort_by_key:
-        description: 'Object key to sort by'
-        required: true
-        default: 'icao'
-        type: string
 
 jobs:
   merge-json:
@@ -92,11 +86,9 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
-            const path = require('path');
             
             const prNumbers = '${{ steps.find_prs.outputs.pr_numbers }}'.split(',').map(n => n.trim());
             const jsonPath = 'custom-data/airlines.json';
-            const sortKey = '${{ inputs.sort_by_key }}';
             
             // Read base JSON from main
             let baseData = [];
@@ -110,9 +102,21 @@ jobs:
               console.log('No existing file on main or invalid JSON, starting fresh');
             }
             
-            // Collect all objects from PRs
-            const allObjects = [...baseData];
+            // Create a map to track objects by their ICAO code
+            const icaoMap = new Map();
+            const objectOrder = [];
+            
+            // Add base objects first (preserving order)
+            for (const obj of baseData) {
+              if (obj.icao) {
+                icaoMap.set(obj.icao, obj);
+                objectOrder.push(obj.icao);
+              }
+            }
+            
+            // Process PRs and collect new/updated objects
             const processedPRs = [];
+            const newObjects = [];
             
             for (const prNum of prNumbers) {
               try {
@@ -141,9 +145,33 @@ jobs:
                     prData = [prData];
                   }
                   
-                  allObjects.push(...prData);
+                  // Check each object from the PR
+                  for (const obj of prData) {
+                    if (!obj.icao) {
+                      console.log(`Skipping object without ICAO code in PR #${prNumber}`);
+                      continue;
+                    }
+                    
+                    if (icaoMap.has(obj.icao)) {
+                      // Check if it's an exact duplicate
+                      const existing = icaoMap.get(obj.icao);
+                      if (JSON.stringify(existing) === JSON.stringify(obj)) {
+                        console.log(`Duplicate object (${obj.icao}) in PR #${prNumber}, skipping`);
+                        continue;
+                      }
+                      
+                      // It's an update - replace the existing object
+                      icaoMap.set(obj.icao, obj);
+                      console.log(`Updated airline ${obj.icao} from PR #${prNumber}`);
+                    } else {
+                      // New airline, add to the end
+                      newObjects.push(obj);
+                      console.log(`New airline ${obj.icao} from PR #${prNumber}`);
+                    }
+                  }
+                  
                   processedPRs.push(prNumber);
-                  console.log(`Added data from PR #${prNumber}`);
+                  console.log(`Processed PR #${prNumber}`);
                 } catch (e) {
                   console.log(`Could not read file from PR #${prNumber}: ${e.message}`);
                 }
@@ -157,33 +185,29 @@ jobs:
               return;
             }
             
-            // Remove duplicates based on JSON stringification
-            const uniqueObjects = [];
-            const seen = new Set();
+            // Build final array: existing objects in order, then new objects
+            const finalData = [];
             
-            for (const obj of allObjects) {
-              const key = JSON.stringify(obj);
-              if (!seen.has(key)) {
-                seen.add(key);
-                uniqueObjects.push(obj);
+            // Add existing/updated objects in original order
+            for (const icao of objectOrder) {
+              if (icaoMap.has(icao)) {
+                finalData.push(icaoMap.get(icao));
               }
             }
             
-            // Sort by specified key
-            uniqueObjects.sort((a, b) => {
-              const aVal = a[sortKey]?.toString() || '';
-              const bVal = b[sortKey]?.toString() || '';
-              return aVal.localeCompare(bVal);
-            });
+            // Add new objects at the end
+            for (const obj of newObjects) {
+              finalData.push(obj);
+            }
             
             // Write merged file
-            fs.writeFileSync(jsonPath, JSON.stringify(uniqueObjects, null, 2) + '\n');
+            fs.writeFileSync(jsonPath, JSON.stringify(finalData, null, 2) + '\n');
             
             // Set outputs
             core.setOutput('processed_prs', processedPRs.join(','));
-            core.setOutput('object_count', uniqueObjects.length);
+            core.setOutput('object_count', finalData.length);
             
-            return { processedPRs, objectCount: uniqueObjects.length };
+            return { processedPRs, objectCount: finalData.length };
       
       - name: Create Pull Request
         id: create_pr
@@ -198,8 +222,8 @@ jobs:
             ${{ steps.merge.outputs.processed_prs }}
             
             - Total airline objects: ${{ steps.merge.outputs.object_count }}
-            - Duplicates removed
-            - Sorted by: `${{ inputs.sort_by_key }}`
+            - Existing objects updated in place
+            - New objects added to the end
             
             **Auto-detected PRs** that only modified `custom-data/airlines.json`
             
@@ -227,7 +251,7 @@ jobs:
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: parseInt(prNum),
-                  body: `✅ This PR has been included in merge PR #${{ steps.create_pr.outputs.pull-request-number }}`
+                  body: `This PR has been included in merge PR #${{ steps.create_pr.outputs.pull-request-number }}`
                 });
               } catch (e) {
                 console.log(`Could not label PR #${prNum}: ${e.message}`);

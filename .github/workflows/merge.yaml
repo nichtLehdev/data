@@ -119,6 +119,7 @@ jobs:
             const processedPRs = [];
             const manualPRs = [];
             const newObjects = [];
+            const deletedKeys = new Set();
             
             for (const prNum of prNumbers) {
               try {
@@ -145,6 +146,23 @@ jobs:
                   
                   if (!Array.isArray(prData)) {
                     prData = [prData];
+                  }
+                  
+                  // Build a set of keys present in this PR
+                  const prKeys = new Set();
+                  for (const obj of prData) {
+                    if (obj.icao && obj.callsign && obj.virtual !== undefined) {
+                      const key = `${obj.icao}|${obj.callsign}|${obj.virtual}`;
+                      prKeys.add(key);
+                    }
+                  }
+                  
+                  // Detect deletions: airlines in base but not in this PR
+                  for (const key of objectOrder) {
+                    if (!prKeys.has(key)) {
+                      deletedKeys.add(key);
+                      console.log(`Deleted airline ${key.replace(/\|/g, '/')} in PR #${prNumber}`);
+                    }
                   }
                   
                   // Check each object from the PR
@@ -214,9 +232,9 @@ jobs:
             // Build final array: existing objects in order, then new objects
             const finalData = [];
             
-            // Add existing/updated objects in original order
+            // Add existing/updated objects in original order (excluding deleted ones)
             for (const key of objectOrder) {
-              if (airlineMap.has(key)) {
+              if (airlineMap.has(key) && !deletedKeys.has(key)) {
                 finalData.push(airlineMap.get(key));
               }
             }

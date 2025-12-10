@@ -1100,10 +1100,10 @@
   },
   {
     "icao": "C",
-    "name": "United States Coast Guard",
+    "name": "United States Coast Guard Virtual",
     "callsign": "COAST GUARD",
     "country": "UNITED STATES",
-    "virtual": false
+    "virtual": true
   },
   {
     "icao": "C",
@@ -1234,6 +1234,19 @@
     "icao": "MAU",
     "name": "Air Mauritius Virtual",
     "callsign": "Air Mauritius",
+    "virtual": true
+  },
+  {
+    "icao": "BEE",
+    "name": "vFlybe",
+    "callsign": "JERSEY",
+    "country": "UNITED KINGDOM",
+    "virtual": true
+  },
+  {
+    "icao": "DAL",
+    "name": "Fly Delta Virtual",
+    "callsign": "Delta",
     "virtual": true
   }
 ]
